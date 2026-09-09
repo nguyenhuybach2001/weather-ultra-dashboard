@@ -1,69 +1,447 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+import { supabase } from "@/lib/supabase";
+
+
+type WeatherData = {
+  device_id?: string;
+  timestamp: string;
+
+  temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+
+  co2: number | null;
+
+  pm1: number | null;
+  pm25: number | null;
+  pm4: number | null;
+  pm10: number | null;
+
+  lux: number | null;
+  uv: number | null;
+
+  device_status: string;
+};
+
+
+function formatValue(
+  value: number | null | undefined,
+  digits = 1,
+  unit = "",
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "--";
+  }
+
+  return `${value.toFixed(digits)}${unit}`;
+}
+
 
 export default function Home() {
+  const [weather, setWeather] =
+    useState<WeatherData | null>(null);
+
+  const [error, setError] =
+    useState(false);
+
+  const [realtimeConnected, setRealtimeConnected] =
+    useState(false);
+
+
+  useEffect(() => {
+    let active = true;
+
+
+    async function loadInitialData() {
+      const {
+        data,
+        error: loadError,
+      } = await supabase
+        .from("device_latest")
+        .select("*")
+        .eq(
+          "device_id",
+          "weather-ultra-01",
+        )
+        .maybeSingle();
+
+
+      if (!active) {
+        return;
+      }
+
+
+      if (loadError) {
+        console.error(
+          "Supabase initial data error:",
+          loadError,
+        );
+
+        setError(true);
+
+        return;
+      }
+
+
+      if (!data) {
+        console.warn(
+          "No device_latest data found",
+        );
+
+        setError(true);
+
+        return;
+      }
+
+
+      setWeather(
+        data as WeatherData,
+      );
+
+      setError(false);
+    }
+
+
+    void loadInitialData();
+
+
+    const channel = supabase
+      .channel(
+        "weather-ultra-live",
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "device_latest",
+          filter:
+            "device_id=eq.weather-ultra-01",
+        },
+        (payload) => {
+          if (!active) {
+            return;
+          }
+
+
+          console.log(
+            "Supabase realtime:",
+            payload.new,
+          );
+
+
+          if (
+            payload.new &&
+            Object.keys(
+              payload.new,
+            ).length > 0
+          ) {
+            setWeather(
+              payload.new as WeatherData,
+            );
+
+            setError(false);
+          }
+        },
+      )
+      .subscribe(
+        (status) => {
+          console.log(
+            "Realtime status:",
+            status,
+          );
+
+
+          if (!active) {
+            return;
+          }
+
+
+          if (
+            status ===
+            "SUBSCRIBED"
+          ) {
+            setRealtimeConnected(
+              true,
+            );
+
+            setError(false);
+          }
+
+
+          if (
+            status ===
+              "CHANNEL_ERROR" ||
+            status ===
+              "TIMED_OUT" ||
+            status ===
+              "CLOSED"
+          ) {
+            setRealtimeConnected(
+              false,
+            );
+
+            setError(true);
+          }
+        },
+      );
+
+
+    return () => {
+      active = false;
+
+      void supabase.removeChannel(
+        channel,
+      );
+    };
+  }, []);
+
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-5xl p-5">
+
+        <header className="mb-8 flex items-center justify-between">
+
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              WEATHER ULTRA
+            </h1>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Intelligent Environmental Monitoring Station
+            </p>
+          </div>
+
+
+          <div className="flex items-center gap-4">
+
+            <Link
+              href="/system"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              System
+            </Link>
+
+            <Link
+              href="/history"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+              History
+            </Link>
+
+
+            <div
+              className={
+                error
+                  ? "text-red-400"
+                  : "text-emerald-400"
+              }
+            >
+              ●{" "}
+              {error
+                ? "OFFLINE"
+                : realtimeConnected
+                  ? "LIVE"
+                  : "ONLINE"}
+            </div>
+
+          </div>
+        </header>
+
+
+        {!weather ? (
+
+          <div className="py-20 text-center text-slate-400">
+            Đang kết nối Weather Ultra...
+          </div>
+
+        ) : (
+
+          <>
+
+            <section className="mb-8 text-center">
+
+              <div className="text-7xl font-bold">
+                {formatValue(
+                  weather.temperature,
+                  1,
+                  "°C",
+                )}
+              </div>
+
+              <div className="mt-2 text-lg text-slate-400">
+                Current Temperature
+              </div>
+
+            </section>
+
+
+            <section className="grid grid-cols-2 gap-4 md:grid-cols-3">
+
+              <SensorCard
+                title="Humidity"
+                value={formatValue(
+                  weather.humidity,
+                  1,
+                  " %",
+                )}
+              />
+
+              <SensorCard
+                title="Pressure"
+                value={formatValue(
+                  weather.pressure,
+                  1,
+                  " hPa",
+                )}
+              />
+
+              <SensorCard
+                title="CO₂"
+                value={formatValue(
+                  weather.co2,
+                  0,
+                  " ppm",
+                )}
+              />
+
+              <SensorCard
+                title="PM2.5"
+                value={formatValue(
+                  weather.pm25,
+                  1,
+                  " µg/m³",
+                )}
+              />
+
+              <SensorCard
+                title="Light"
+                value={formatValue(
+                  weather.lux,
+                  1,
+                  " lux",
+                )}
+              />
+
+              <SensorCard
+                title="UV"
+                value={formatValue(
+                  weather.uv,
+                  1,
+                )}
+              />
+
+            </section>
+
+
+            <section className="mt-6">
+
+              <h2 className="mb-3 text-lg font-semibold">
+                Particulate Matter
+              </h2>
+
+
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+
+                <SmallCard
+                  title="PM1.0"
+                  value={weather.pm1}
+                />
+
+                <SmallCard
+                  title="PM2.5"
+                  value={weather.pm25}
+                />
+
+                <SmallCard
+                  title="PM4"
+                  value={weather.pm4}
+                />
+
+                <SmallCard
+                  title="PM10"
+                  value={weather.pm10}
+                />
+
+              </div>
+            </section>
+
+
+            <footer className="mt-8 text-center text-xs text-slate-500">
+
+              Last update:{" "}
+
+              {new Date(
+                weather.timestamp,
+              ).toLocaleString()}
+
+            </footer>
+
+          </>
+        )}
+
+      </div>
+    </main>
+  );
+}
+
+
+function SensorCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+
+      <div className="text-sm text-slate-400">
+        {title}
+      </div>
+
+      <div className="mt-2 text-2xl font-semibold">
+        {value}
+      </div>
+
+    </div>
+  );
+}
+
+
+function SmallCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: number | null;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+
+      <div className="text-xs text-slate-400">
+        {title}
+      </div>
+
+      <div className="mt-1 text-xl font-semibold">
+        {formatValue(
+          value,
+          1,
+        )}
+      </div>
+
+      <div className="text-xs text-slate-500">
+        µg/m³
+      </div>
+
     </div>
   );
 }
