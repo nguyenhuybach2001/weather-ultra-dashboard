@@ -36,30 +36,39 @@ export default function SystemPage() {
   const [runtime, setRuntime] =
     useState<RuntimeStatus | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [cloudError, setCloudError] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [realtimeConnected, setRealtimeConnected] =
+  const [cloudError, setCloudError] =
     useState(false);
 
-  const [runtimeRealtimeConnected, setRuntimeRealtimeConnected] =
-    useState(false);
+  const [
+    realtimeConnected,
+    setRealtimeConnected,
+  ] = useState(false);
 
-  const [now, setNow] = useState(Date.now());
+  const [
+    runtimeRealtimeConnected,
+    setRuntimeRealtimeConnected,
+  ] = useState(false);
+
+  const [now, setNow] =
+    useState(Date.now());
 
   useEffect(() => {
     let active = true;
 
     const loadStatus = async () => {
       try {
-        const { data, error } = await supabase
-          .from("device_latest")
-          .select("*")
-          .eq(
-            "device_id",
-            "weather-ultra-01",
-          )
-          .maybeSingle();
+        const { data, error } =
+          await supabase
+            .from("device_latest")
+            .select("*")
+            .eq(
+              "device_id",
+              "weather-ultra-01",
+            )
+            .maybeSingle();
 
         if (error) {
           throw error;
@@ -86,14 +95,17 @@ export default function SystemPage() {
 
     const loadRuntime = async () => {
       try {
-        const { data, error } = await supabase
-          .from("device_runtime")
-          .select("camera_url,camera_online")
-          .eq(
-            "device_id",
-            "weather-ultra-01",
-          )
-          .maybeSingle();
+        const { data, error } =
+          await supabase
+            .from("device_runtime")
+            .select(
+              "camera_url,camera_online",
+            )
+            .eq(
+              "device_id",
+              "weather-ultra-01",
+            )
+            .maybeSingle();
 
         if (error) {
           throw error;
@@ -139,7 +151,9 @@ export default function SystemPage() {
         (payload) => {
           if (
             payload.new &&
-            Object.keys(payload.new).length > 0
+            Object.keys(
+              payload.new,
+            ).length > 0
           ) {
             setReading(
               payload.new as LatestReading,
@@ -165,7 +179,9 @@ export default function SystemPage() {
       });
 
     const runtimeChannel = supabase
-      .channel("weather-ultra-runtime")
+      .channel(
+        "weather-ultra-runtime",
+      )
       .on(
         "postgres_changes",
         {
@@ -178,7 +194,9 @@ export default function SystemPage() {
         (payload) => {
           if (
             payload.new &&
-            Object.keys(payload.new).length > 0
+            Object.keys(
+              payload.new,
+            ).length > 0
           ) {
             setRuntime(
               payload.new as RuntimeStatus,
@@ -188,7 +206,9 @@ export default function SystemPage() {
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          setRuntimeRealtimeConnected(true);
+          setRuntimeRealtimeConnected(
+            true,
+          );
         }
 
         if (
@@ -196,7 +216,9 @@ export default function SystemPage() {
           status === "TIMED_OUT" ||
           status === "CLOSED"
         ) {
-          setRuntimeRealtimeConnected(false);
+          setRuntimeRealtimeConnected(
+            false,
+          );
         }
       });
 
@@ -219,6 +241,12 @@ export default function SystemPage() {
     };
   }, []);
 
+  /*
+   * Tuổi của bản ghi ESP32 mới nhất.
+   *
+   * ESP32 gửi dữ liệu khoảng
+   * mỗi 10 giây.
+   */
   const ageSeconds = reading
     ? Math.max(
         0,
@@ -232,51 +260,162 @@ export default function SystemPage() {
       )
     : null;
 
-  let deviceStatus = "offline";
+  /*
+   * ESP32 STATUS
+   *
+   * < 30s  = online
+   * 30-60s = delayed
+   * > 60s  = offline
+   */
+  let esp32Status:
+    | "online"
+    | "delayed"
+    | "offline" = "offline";
 
   if (ageSeconds !== null) {
     if (ageSeconds < 30) {
-      deviceStatus = "online";
+      esp32Status = "online";
     } else if (ageSeconds < 60) {
-      deviceStatus = "delayed";
+      esp32Status = "delayed";
     }
   }
 
-  const systemStatus =
-    !cloudError &&
-    deviceStatus === "online"
-      ? "online"
-      : deviceStatus === "delayed"
-        ? "delayed"
-        : "offline";
-
-  const sensorStatus = (
-    value: number | null | undefined,
-  ) => {
-    return value === null ||
-      value === undefined
-      ? "waiting"
-      : "online";
-  };
-
-  const sps30Online =
-    reading?.pm1 !== null &&
-    reading?.pm1 !== undefined
-      ? true
-      : reading?.pm25 !== null &&
-          reading?.pm25 !== undefined
-        ? true
-        : reading?.pm4 !== null &&
-            reading?.pm4 !== undefined
-          ? true
-          : reading?.pm10 !== null &&
-            reading?.pm10 !== undefined;
-
+  /*
+   * CAMERA STATUS
+   */
   const cameraStatus =
     runtime?.camera_online &&
     runtime?.camera_url
       ? "online"
       : "offline";
+
+  /*
+   * RASPBERRY PI STATUS
+   *
+   * Camera tunnel chạy trên Pi.
+   * Nếu camera online thì chắc chắn
+   * Pi đang hoạt động.
+   *
+   * Nếu camera chưa sẵn sàng nhưng
+   * ESP32 vẫn đang gửi dữ liệu,
+   * Pi cũng vẫn được xem là online.
+   */
+  const raspberryPiStatus =
+    cameraStatus === "online" ||
+    esp32Status === "online" ||
+    esp32Status === "delayed"
+      ? "online"
+      : "offline";
+
+  /*
+   * SYSTEM STATUS
+   */
+  let systemStatus:
+    | "online"
+    | "delayed"
+    | "offline"
+    | "error" = "offline";
+
+  if (cloudError) {
+    systemStatus = "error";
+  } else if (
+    raspberryPiStatus === "offline"
+  ) {
+    systemStatus = "offline";
+  } else if (
+    esp32Status === "online"
+  ) {
+    systemStatus = "online";
+  } else {
+    /*
+     * Pi vẫn online nhưng ESP32
+     * delayed/offline.
+     *
+     * Hệ thống vẫn chạy nhưng
+     * phần đo cảm biến có vấn đề.
+     */
+    systemStatus = "delayed";
+  }
+
+  /*
+   * STATUS CHO SENSOR ĐƠN
+   */
+  const sensorStatus = (
+    value: number | null | undefined,
+  ) => {
+    if (esp32Status === "offline") {
+      return "offline";
+    }
+
+    if (esp32Status === "delayed") {
+      return "delayed";
+    }
+
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return "waiting";
+    }
+
+    return "online";
+  };
+
+  /*
+   * SHT45 có 2 giá trị:
+   * temperature + humidity
+   */
+  const sht45Status = (() => {
+    if (esp32Status === "offline") {
+      return "offline";
+    }
+
+    if (esp32Status === "delayed") {
+      return "delayed";
+    }
+
+    const hasTemperature =
+      reading?.temperature !== null &&
+      reading?.temperature !==
+        undefined;
+
+    const hasHumidity =
+      reading?.humidity !== null &&
+      reading?.humidity !==
+        undefined;
+
+    return hasTemperature &&
+      hasHumidity
+      ? "online"
+      : "waiting";
+  })();
+
+  /*
+   * SPS30 có nhiều giá trị PM.
+   */
+  const sps30HasData =
+    (reading?.pm1 !== null &&
+      reading?.pm1 !== undefined) ||
+    (reading?.pm25 !== null &&
+      reading?.pm25 !== undefined) ||
+    (reading?.pm4 !== null &&
+      reading?.pm4 !== undefined) ||
+    (reading?.pm10 !== null &&
+      reading?.pm10 !== undefined);
+
+  const sps30Status = (() => {
+    if (esp32Status === "offline") {
+      return "offline";
+    }
+
+    if (esp32Status === "delayed") {
+      return "delayed";
+    }
+
+    return sps30HasData
+      ? "online"
+      : "waiting";
+  })();
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -343,12 +482,14 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3">
               <StatusCard
                 name="Raspberry Pi"
-                status={deviceStatus}
+                status={
+                  raspberryPiStatus
+                }
               />
 
               <StatusCard
                 name="ESP32-S3"
-                status={deviceStatus}
+                status={esp32Status}
               />
             </section>
 
@@ -359,18 +500,7 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
               <StatusCard
                 name="SHT45"
-                status={
-                  reading?.temperature !==
-                    null &&
-                  reading?.temperature !==
-                    undefined &&
-                  reading?.humidity !==
-                    null &&
-                  reading?.humidity !==
-                    undefined
-                    ? "online"
-                    : "waiting"
-                }
+                status={sht45Status}
               />
 
               <StatusCard
@@ -389,11 +519,7 @@ export default function SystemPage() {
 
               <StatusCard
                 name="SPS30"
-                status={
-                  sps30Online
-                    ? "online"
-                    : "waiting"
-                }
+                status={sps30Status}
               />
 
               <StatusCard
@@ -442,7 +568,7 @@ export default function SystemPage() {
                 </div>
 
                 <div>
-                  Last update:{" "}
+                  Last sensor update:{" "}
                   <span className="text-white">
                     {reading
                       ? new Date(
@@ -453,11 +579,25 @@ export default function SystemPage() {
                 </div>
 
                 <div>
-                  Update age:{" "}
+                  Sensor update age:{" "}
                   <span className="text-white">
                     {ageSeconds !== null
                       ? `${ageSeconds}s`
                       : "--"}
+                  </span>
+                </div>
+
+                <div>
+                  Raspberry Pi:{" "}
+                  <span className="text-white">
+                    {raspberryPiStatus.toUpperCase()}
+                  </span>
+                </div>
+
+                <div>
+                  ESP32-S3:{" "}
+                  <span className="text-white">
+                    {esp32Status.toUpperCase()}
                   </span>
                 </div>
 
