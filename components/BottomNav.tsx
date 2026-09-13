@@ -13,6 +13,10 @@ const items = [
     label: "History",
   },
   {
+    href: "/camera",
+    label: "Camera",
+  },
+  {
     href: "/system",
     label: "System",
   },
@@ -22,10 +26,9 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="grid grid-cols-3 gap-2">
+    <nav className="grid grid-cols-4 gap-2">
       {items.map((item) => {
-        const active =
-          pathname === item.href;
+        const active = pathname === item.href;
 
         return (
           <Link
