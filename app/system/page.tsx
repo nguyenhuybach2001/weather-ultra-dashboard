@@ -11,7 +11,6 @@ type LatestReading = {
   temperature: number | null;
   humidity: number | null;
   pressure: number | null;
-
   co2: number | null;
 
   pm1: number | null;
@@ -25,13 +24,25 @@ type LatestReading = {
   device_status: string;
 };
 
+type RuntimeStatus = {
+  camera_url: string | null;
+  camera_online: boolean;
+};
+
 export default function SystemPage() {
   const [reading, setReading] =
     useState<LatestReading | null>(null);
 
+  const [runtime, setRuntime] =
+    useState<RuntimeStatus | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [cloudError, setCloudError] = useState(false);
+
   const [realtimeConnected, setRealtimeConnected] =
+    useState(false);
+
+  const [runtimeRealtimeConnected, setRuntimeRealtimeConnected] =
     useState(false);
 
   const [now, setNow] = useState(Date.now());
@@ -41,10 +52,7 @@ export default function SystemPage() {
 
     const loadStatus = async () => {
       try {
-        const {
-          data,
-          error,
-        } = await supabase
+        const { data, error } = await supabase
           .from("device_latest")
           .select("*")
           .eq(
@@ -63,7 +71,6 @@ export default function SystemPage() {
           );
 
           setCloudError(false);
-          setLoading(false);
         }
       } catch (err) {
         console.error(
@@ -73,12 +80,50 @@ export default function SystemPage() {
 
         if (active) {
           setCloudError(true);
-          setLoading(false);
         }
       }
     };
 
-    void loadStatus();
+    const loadRuntime = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("device_runtime")
+          .select("camera_url,camera_online")
+          .eq(
+            "device_id",
+            "weather-ultra-01",
+          )
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (active) {
+          setRuntime(
+            data as RuntimeStatus | null,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "Cannot load runtime status:",
+          err,
+        );
+      }
+    };
+
+    const loadAll = async () => {
+      await Promise.all([
+        loadStatus(),
+        loadRuntime(),
+      ]);
+
+      if (active) {
+        setLoading(false);
+      }
+    };
+
+    void loadAll();
 
     const channel = supabase
       .channel("weather-ultra-system")
@@ -119,6 +164,42 @@ export default function SystemPage() {
         }
       });
 
+    const runtimeChannel = supabase
+      .channel("weather-ultra-runtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "device_runtime",
+          filter:
+            "device_id=eq.weather-ultra-01",
+        },
+        (payload) => {
+          if (
+            payload.new &&
+            Object.keys(payload.new).length > 0
+          ) {
+            setRuntime(
+              payload.new as RuntimeStatus,
+            );
+          }
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setRuntimeRealtimeConnected(true);
+        }
+
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRuntimeRealtimeConnected(false);
+        }
+      });
+
     const clock = setInterval(() => {
       setNow(Date.now());
     }, 5000);
@@ -130,6 +211,10 @@ export default function SystemPage() {
 
       void supabase.removeChannel(
         channel,
+      );
+
+      void supabase.removeChannel(
+        runtimeChannel,
       );
     };
   }, []);
@@ -147,14 +232,6 @@ export default function SystemPage() {
       )
     : null;
 
-  /*
-   * device_latest được gửi lên khoảng
-   * mỗi 10 giây.
-   *
-   * < 30s  = online
-   * 30-60s = delayed
-   * > 60s  = offline
-   */
   let deviceStatus = "offline";
 
   if (ageSeconds !== null) {
@@ -193,7 +270,13 @@ export default function SystemPage() {
             reading?.pm4 !== undefined
           ? true
           : reading?.pm10 !== null &&
-              reading?.pm10 !== undefined;
+            reading?.pm10 !== undefined;
+
+  const cameraStatus =
+    runtime?.camera_online &&
+    runtime?.camera_url
+      ? "online"
+      : "offline";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -335,7 +418,7 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3">
               <StatusCard
                 name="Camera"
-                status="waiting"
+                status={cameraStatus}
               />
 
               <StatusCard
@@ -384,6 +467,24 @@ export default function SystemPage() {
                     {realtimeConnected
                       ? "Connected"
                       : "Disconnected"}
+                  </span>
+                </div>
+
+                <div>
+                  Camera realtime:{" "}
+                  <span className="text-white">
+                    {runtimeRealtimeConnected
+                      ? "Connected"
+                      : "Disconnected"}
+                  </span>
+                </div>
+
+                <div>
+                  Camera tunnel:{" "}
+                  <span className="text-white">
+                    {runtime?.camera_url
+                      ? "Available"
+                      : "Unavailable"}
                   </span>
                 </div>
               </div>
