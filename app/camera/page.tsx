@@ -1,64 +1,109 @@
-import Link from "next/link";
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import BottomNav from "@/components/BottomNav";
+
+type RuntimeData = {
+  camera_url: string | null;
+  camera_online: boolean;
+};
 
 export default function CameraPage() {
-  const cameraUrl =
-    process.env.NEXT_PUBLIC_CAMERA_URL ??
-    "http://192.168.0.106:5001";
+  const [cameraUrl, setCameraUrl] = useState<string | null>(null);
+  const [cameraOnline, setCameraOnline] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  async function loadCamera() {
+    const { data, error } = await supabase
+      .from("device_runtime")
+      .select("camera_url,camera_online")
+      .eq("device_id", "weather-ultra-01")
+      .single();
+
+    if (!error && data) {
+      const runtime = data as RuntimeData;
+
+      setCameraUrl(runtime.camera_url);
+      setCameraOnline(runtime.camera_online);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadCamera();
+
+    const channel = supabase
+      .channel("device-runtime-camera")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "device_runtime",
+          filter: "device_id=eq.weather-ultra-01",
+        },
+        (payload) => {
+          const runtime = payload.new as RuntimeData;
+
+          setCameraUrl(runtime.camera_url);
+          setCameraOnline(runtime.camera_online);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-5xl p-5">
+    <main className="min-h-screen bg-black text-white pb-24">
+      <div className="p-4">
+        <h1 className="text-2xl font-bold mb-4">
+          Camera
+        </h1>
 
-        <header className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              LIVE CAMERA
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-400">
-              Weather Ultra Camera Monitoring
-            </p>
+        {loading && (
+          <div className="text-gray-400">
+            Đang kết nối camera...
           </div>
+        )}
 
-          <Link
-            href="/"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm"
-          >
-            Home
-          </Link>
-        </header>
-
-        <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-            <div>
-              <div className="font-semibold">
-                Weather Ultra Camera
-              </div>
-
-              <div className="mt-1 text-xs text-slate-400">
-                Raspberry Pi 5 • 640×480 • 15 FPS
-              </div>
+        {!loading && (!cameraOnline || !cameraUrl) && (
+          <div className="rounded-xl bg-zinc-900 p-6 text-center">
+            <div className="text-red-400 font-semibold">
+              Camera offline
             </div>
 
-            <div className="text-sm font-medium text-emerald-400">
-              ● LIVE
+            <div className="text-sm text-gray-400 mt-2">
+              Đang chờ Raspberry Pi kết nối lại.
             </div>
           </div>
+        )}
 
-          <div className="flex min-h-[300px] items-center justify-center bg-black">
-            <img
-              src={`${cameraUrl}/stream`}
-              alt="Weather Ultra Live Camera"
-              className="h-auto w-full object-contain"
-            />
-          </div>
-        </section>
+        {!loading && cameraOnline && cameraUrl && (
+          <>
+            <div className="mb-3 flex items-center gap-2 text-sm">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-green-400">
+                Camera Online
+              </span>
+            </div>
 
-        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-          Camera stream được truyền trực tiếp từ Raspberry Pi.
-        </div>
-
+            <div className="rounded-xl overflow-hidden bg-zinc-900">
+              <img
+                src={`${cameraUrl}/stream`}
+                alt="Weather Ultra Camera"
+                className="w-full h-auto"
+              />
+            </div>
+          </>
+        )}
       </div>
+
+      <BottomNav />
     </main>
   );
 }
