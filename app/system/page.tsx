@@ -273,9 +273,9 @@ export default function SystemPage() {
     | "offline" = "offline";
 
   if (ageSeconds !== null) {
-    if (ageSeconds < 30) {
+    if (ageSeconds < 4) {
       esp32Status = "online";
-    } else if (ageSeconds < 60) {
+    } else if (ageSeconds < 7) {
       esp32Status = "delayed";
     }
   }
