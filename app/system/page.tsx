@@ -23,6 +23,8 @@ type LatestReading = {
 type RuntimeStatus = {
   camera_url: string | null;
   camera_online: boolean;
+  pi_online: boolean | null;
+  pi_last_seen: string | null;
 };
 
 type Status =
@@ -37,6 +39,47 @@ const DEVICE_ID = "weather-ultra-01";
 const ONLINE_MAX_AGE = 4;
 const OFFLINE_MIN_AGE = 7;
 
+function statusFromAge(
+  age: number | null,
+): Status {
+  if (age === null) {
+    return "offline";
+  }
+
+  if (age < ONLINE_MAX_AGE) {
+    return "online";
+  }
+
+  if (age < OFFLINE_MIN_AGE) {
+    return "delayed";
+  }
+
+  return "offline";
+}
+
+function getAgeSeconds(
+  timestamp: string | null | undefined,
+  now: number,
+): number | null {
+  if (!timestamp) {
+    return null;
+  }
+
+  const timestampMs =
+    new Date(timestamp).getTime();
+
+  if (Number.isNaN(timestampMs)) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    Math.floor(
+      (now - timestampMs) / 1000,
+    ),
+  );
+}
+
 export default function SystemPage() {
   const [reading, setReading] =
     useState<LatestReading | null>(null);
@@ -44,7 +87,9 @@ export default function SystemPage() {
   const [runtime, setRuntime] =
     useState<RuntimeStatus | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
+
   const [cloudError, setCloudError] =
     useState(false);
 
@@ -58,24 +103,26 @@ export default function SystemPage() {
     setRuntimeRealtimeConnected,
   ] = useState(false);
 
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] =
+    useState(Date.now());
 
   useEffect(() => {
     let active = true;
 
     /*
-     * Đọc device_latest.
-     *
-     * Hàm này vừa dùng lúc mở trang,
-     * vừa dùng làm polling fallback.
+     * ESP32 latest reading
      */
     const loadStatus = async () => {
       try {
-        const { data, error } = await supabase
-          .from("device_latest")
-          .select("*")
-          .eq("device_id", DEVICE_ID)
-          .maybeSingle();
+        const { data, error } =
+          await supabase
+            .from("device_latest")
+            .select("*")
+            .eq(
+              "device_id",
+              DEVICE_ID,
+            )
+            .maybeSingle();
 
         if (error) {
           throw error;
@@ -85,6 +132,7 @@ export default function SystemPage() {
           setReading(
             data as LatestReading | null,
           );
+
           setCloudError(false);
           setNow(Date.now());
         }
@@ -101,17 +149,26 @@ export default function SystemPage() {
     };
 
     /*
-     * Đọc trạng thái runtime của camera.
+     * Raspberry Pi + Camera runtime
      */
     const loadRuntime = async () => {
       try {
-        const { data, error } = await supabase
-          .from("device_runtime")
-          .select(
-            "camera_url,camera_online",
-          )
-          .eq("device_id", DEVICE_ID)
-          .maybeSingle();
+        const { data, error } =
+          await supabase
+            .from("device_runtime")
+            .select(
+              [
+                "camera_url",
+                "camera_online",
+                "pi_online",
+                "pi_last_seen",
+              ].join(","),
+            )
+            .eq(
+              "device_id",
+              DEVICE_ID,
+            )
+            .maybeSingle();
 
         if (error) {
           throw error;
@@ -121,6 +178,8 @@ export default function SystemPage() {
           setRuntime(
             data as RuntimeStatus | null,
           );
+
+          setNow(Date.now());
         }
       } catch (err) {
         console.error(
@@ -144,38 +203,48 @@ export default function SystemPage() {
     void loadAll();
 
     /*
-     * REALTIME: device_latest
+     * Supabase Realtime:
+     * device_latest
      */
     const channel = supabase
-      .channel("weather-ultra-system")
+      .channel(
+        "weather-ultra-system",
+      )
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "device_latest",
-          filter: `device_id=eq.${DEVICE_ID}`,
+          filter:
+            `device_id=eq.${DEVICE_ID}`,
         },
         (payload) => {
           if (
             payload.new &&
-            Object.keys(payload.new).length > 0
+            Object.keys(
+              payload.new,
+            ).length > 0
           ) {
             setReading(
               payload.new as LatestReading,
             );
+
             setCloudError(false);
             setNow(Date.now());
           }
         },
       )
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
+        if (
+          status === "SUBSCRIBED"
+        ) {
           setRealtimeConnected(true);
         }
 
         if (
-          status === "CHANNEL_ERROR" ||
+          status ===
+            "CHANNEL_ERROR" ||
           status === "TIMED_OUT" ||
           status === "CLOSED"
         ) {
@@ -184,81 +253,105 @@ export default function SystemPage() {
       });
 
     /*
-     * REALTIME: device_runtime
+     * Supabase Realtime:
+     * device_runtime
+     *
+     * Nhận heartbeat Pi và
+     * trạng thái Camera.
      */
     const runtimeChannel = supabase
-      .channel("weather-ultra-runtime")
+      .channel(
+        "weather-ultra-runtime",
+      )
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "device_runtime",
-          filter: `device_id=eq.${DEVICE_ID}`,
+          filter:
+            `device_id=eq.${DEVICE_ID}`,
         },
         (payload) => {
           if (
             payload.new &&
-            Object.keys(payload.new).length > 0
+            Object.keys(
+              payload.new,
+            ).length > 0
           ) {
             setRuntime(
               payload.new as RuntimeStatus,
             );
+
+            setNow(Date.now());
           }
         },
       )
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          setRuntimeRealtimeConnected(true);
+        if (
+          status === "SUBSCRIBED"
+        ) {
+          setRuntimeRealtimeConnected(
+            true,
+          );
         }
 
         if (
-          status === "CHANNEL_ERROR" ||
+          status ===
+            "CHANNEL_ERROR" ||
           status === "TIMED_OUT" ||
           status === "CLOSED"
         ) {
-          setRuntimeRealtimeConnected(false);
+          setRuntimeRealtimeConnected(
+            false,
+          );
         }
       });
 
     /*
-     * Đồng hồ trạng thái.
+     * Đồng hồ local.
      *
-     * Kiểm tra mỗi 1 giây để timeout
-     * 4s / 7s phản ứng chính xác.
+     * Dùng để tăng age ngay cả khi
+     * không có dữ liệu mới.
      */
     const clock = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
     /*
-     * Polling fallback.
-     *
-     * ESP32/backend/cloud đang update
-     * khoảng 2 giây/lần.
-     *
-     * Nếu Supabase Realtime bị trễ,
-     * web vẫn lấy reading mới.
+     * Polling fallback cho ESP32.
      */
-    const polling = setInterval(() => {
-      void loadStatus();
-    }, 2000);
+    const statusPolling =
+      setInterval(() => {
+        void loadStatus();
+      }, 2000);
 
     /*
-     * Runtime không cần poll nhanh.
+     * Poll heartbeat Pi mỗi 2 giây.
+     *
+     * Không phụ thuộc việc Supabase
+     * Realtime có hoạt động hay không.
      */
-    const runtimePolling = setInterval(() => {
-      void loadRuntime();
-    }, 10000);
+    const runtimePolling =
+      setInterval(() => {
+        void loadRuntime();
+      }, 2000);
 
     return () => {
       active = false;
 
       clearInterval(clock);
-      clearInterval(polling);
-      clearInterval(runtimePolling);
+      clearInterval(
+        statusPolling,
+      );
+      clearInterval(
+        runtimePolling,
+      );
 
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(
+        channel,
+      );
+
       void supabase.removeChannel(
         runtimeChannel,
       );
@@ -266,135 +359,162 @@ export default function SystemPage() {
   }, []);
 
   /*
-   * Tuổi của reading mới nhất.
-   */
-  const ageSeconds = reading
-    ? Math.max(
-        0,
-        Math.floor(
-          (now -
-            new Date(
-              reading.timestamp,
-            ).getTime()) /
-            1000,
-        ),
-      )
-    : null;
-
-  /*
-   * Trạng thái dựa vào tuổi reading.
-   *
-   * < 4s  ONLINE
-   * 4-6s  DELAYED
-   * >= 7s OFFLINE
-   */
-  const getConnectionStatus = (): Status => {
-    if (ageSeconds === null) {
-      return "offline";
-    }
-
-    if (ageSeconds < ONLINE_MAX_AGE) {
-      return "online";
-    }
-
-    if (ageSeconds < OFFLINE_MIN_AGE) {
-      return "delayed";
-    }
-
-    return "offline";
-  };
-
-  /*
+   * =================================================
    * ESP32 STATUS
+   * =================================================
    *
-   * Hiện ESP32 đi qua backend Pi,
-   * vì vậy tuổi device_latest được dùng
-   * để xác định kết nối ESP32.
+   * Chỉ dựa vào timestamp của
+   * device_latest.
    */
+  const esp32AgeSeconds =
+    getAgeSeconds(
+      reading?.timestamp,
+      now,
+    );
+
   const esp32Status =
-    getConnectionStatus();
+    statusFromAge(
+      esp32AgeSeconds,
+    );
 
   /*
+   * =================================================
    * RASPBERRY PI STATUS
+   * =================================================
    *
-   * Backend chạy trên Pi và chính Pi
-   * gửi device_latest lên Supabase.
+   * Hoàn toàn độc lập ESP32.
    *
-   * Khi Pi mất điện:
-   * timestamp ngừng cập nhật
-   * -> delayed
-   * -> offline.
+   * Chỉ dựa vào:
+   * device_runtime.pi_last_seen
    */
-  const raspberryPiStatus =
-    getConnectionStatus();
+  const piAgeSeconds =
+    getAgeSeconds(
+      runtime?.pi_last_seen,
+      now,
+    );
+
+  let raspberryPiStatus: Status =
+    statusFromAge(piAgeSeconds);
 
   /*
+   * Nếu backend chủ động báo
+   * pi_online=false thì offline ngay.
+   *
+   * Bình thường khi mất điện,
+   * pi_online vẫn còn true trong DB,
+   * nhưng pi_last_seen sẽ cũ đi và
+   * statusFromAge() vẫn đưa Pi offline.
+   */
+  if (runtime?.pi_online === false) {
+    raspberryPiStatus = "offline";
+  }
+
+  /*
+   * =================================================
    * CAMERA STATUS
+   * =================================================
    *
-   * Không cho phép camera tiếp tục
-   * ONLINE từ dữ liệu runtime cũ
-   * nếu Pi đã delayed/offline.
+   * Camera chạy trên Pi.
+   *
+   * Pi offline -> Camera offline
+   * Pi delayed -> Camera delayed
+   *
+   * Chỉ khi Pi online mới tin
+   * camera_online trong runtime.
    */
-  const cameraStatus: Status = (() => {
-    if (raspberryPiStatus === "offline") {
+  const cameraStatus: Status =
+    (() => {
+      if (
+        raspberryPiStatus ===
+        "offline"
+      ) {
+        return "offline";
+      }
+
+      if (
+        raspberryPiStatus ===
+        "delayed"
+      ) {
+        return "delayed";
+      }
+
+      if (
+        runtime?.camera_online &&
+        runtime?.camera_url
+      ) {
+        return "online";
+      }
+
       return "offline";
-    }
-
-    if (raspberryPiStatus === "delayed") {
-      return "delayed";
-    }
-
-    if (
-      runtime?.camera_online &&
-      runtime?.camera_url
-    ) {
-      return "online";
-    }
-
-    return "offline";
-  })();
+    })();
 
   /*
+   * =================================================
    * SYSTEM STATUS
+   * =================================================
    */
-  let systemStatus: Status = "offline";
+  let systemStatus: Status =
+    "offline";
 
   if (cloudError) {
     systemStatus = "error";
   } else if (
-    raspberryPiStatus === "offline"
+    raspberryPiStatus ===
+    "offline"
   ) {
     systemStatus = "offline";
   } else if (
-    raspberryPiStatus === "delayed"
+    raspberryPiStatus ===
+    "delayed"
   ) {
     systemStatus = "delayed";
-  } else if (esp32Status === "online") {
+  } else if (
+    esp32Status === "online"
+  ) {
     systemStatus = "online";
   } else {
+    /*
+     * Pi còn online nhưng ESP32
+     * delayed/offline.
+     *
+     * Hệ thống chính vẫn chạy,
+     * nhưng data acquisition
+     * đang có vấn đề.
+     */
     systemStatus = "delayed";
   }
 
   /*
-   * SENSOR ĐƠN
+   * =================================================
+   * SENSOR STATUS
+   * =================================================
    *
-   * ESP32 offline:
-   * sensor phải offline.
+   * Hiện sensor đi qua ESP32.
    *
-   * ESP32 delayed:
-   * sensor phải delayed.
+   * ESP32 mất -> sensor mất.
    *
-   * ESP32 online nhưng sensor null:
-   * sensor waiting.
+   * Nếu ESP32 online:
+   * - có value = online
+   * - null = waiting
+   *
+   * Bước sau có thể nâng cấp
+   * heartbeat riêng từng sensor.
    */
   const sensorStatus = (
-    value: number | null | undefined,
+    value:
+      | number
+      | null
+      | undefined,
   ): Status => {
-    if (esp32Status === "offline") {
+    if (
+      esp32Status === "offline"
+    ) {
       return "offline";
     }
 
-    if (esp32Status === "delayed") {
+    if (
+      esp32Status === "delayed"
+    ) {
       return "delayed";
     }
 
@@ -410,56 +530,80 @@ export default function SystemPage() {
 
   /*
    * SHT45
-   * temperature + humidity
    */
-  const sht45Status: Status = (() => {
-    if (esp32Status === "offline") {
-      return "offline";
-    }
+  const sht45Status: Status =
+    (() => {
+      if (
+        esp32Status ===
+        "offline"
+      ) {
+        return "offline";
+      }
 
-    if (esp32Status === "delayed") {
-      return "delayed";
-    }
+      if (
+        esp32Status ===
+        "delayed"
+      ) {
+        return "delayed";
+      }
 
-    const hasTemperature =
-      reading?.temperature !== null &&
-      reading?.temperature !== undefined;
+      const hasTemperature =
+        reading?.temperature !==
+          null &&
+        reading?.temperature !==
+          undefined;
 
-    const hasHumidity =
-      reading?.humidity !== null &&
-      reading?.humidity !== undefined;
+      const hasHumidity =
+        reading?.humidity !==
+          null &&
+        reading?.humidity !==
+          undefined;
 
-    return hasTemperature && hasHumidity
-      ? "online"
-      : "waiting";
-  })();
+      return (
+        hasTemperature &&
+        hasHumidity
+      )
+        ? "online"
+        : "waiting";
+    })();
 
   /*
    * SPS30
    */
   const sps30HasData =
     (reading?.pm1 !== null &&
-      reading?.pm1 !== undefined) ||
+      reading?.pm1 !==
+        undefined) ||
     (reading?.pm25 !== null &&
-      reading?.pm25 !== undefined) ||
+      reading?.pm25 !==
+        undefined) ||
     (reading?.pm4 !== null &&
-      reading?.pm4 !== undefined) ||
+      reading?.pm4 !==
+        undefined) ||
     (reading?.pm10 !== null &&
-      reading?.pm10 !== undefined);
+      reading?.pm10 !==
+        undefined);
 
-  const sps30Status: Status = (() => {
-    if (esp32Status === "offline") {
-      return "offline";
-    }
+  const sps30Status: Status =
+    (() => {
+      if (
+        esp32Status ===
+        "offline"
+      ) {
+        return "offline";
+      }
 
-    if (esp32Status === "delayed") {
-      return "delayed";
-    }
+      if (
+        esp32Status ===
+        "delayed"
+      ) {
+        return "delayed";
+      }
 
-    return sps30HasData
-      ? "online"
-      : "waiting";
-  })();
+      return sps30HasData
+        ? "online"
+        : "waiting";
+    })();
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -471,7 +615,8 @@ export default function SystemPage() {
             </h1>
 
             <p className="text-sm text-slate-400">
-              Weather Ultra system status
+              Weather Ultra system
+              status
             </p>
           </div>
 
@@ -526,12 +671,16 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3">
               <StatusCard
                 name="Raspberry Pi"
-                status={raspberryPiStatus}
+                status={
+                  raspberryPiStatus
+                }
               />
 
               <StatusCard
                 name="ESP32-S3"
-                status={esp32Status}
+                status={
+                  esp32Status
+                }
               />
             </section>
 
@@ -542,7 +691,9 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
               <StatusCard
                 name="SHT45"
-                status={sht45Status}
+                status={
+                  sht45Status
+                }
               />
 
               <StatusCard
@@ -561,7 +712,9 @@ export default function SystemPage() {
 
               <StatusCard
                 name="SPS30"
-                status={sps30Status}
+                status={
+                  sps30Status
+                }
               />
 
               <StatusCard
@@ -586,7 +739,9 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3">
               <StatusCard
                 name="Camera"
-                status={cameraStatus}
+                status={
+                  cameraStatus
+                }
               />
 
               <StatusCard
@@ -604,8 +759,9 @@ export default function SystemPage() {
                 <div>
                   Device ID:{" "}
                   <span className="text-white">
-                    {reading?.device_id ??
-                      "--"}
+                    {reading
+                      ?.device_id ??
+                      DEVICE_ID}
                   </span>
                 </div>
 
@@ -621,10 +777,32 @@ export default function SystemPage() {
                 </div>
 
                 <div>
-                  Sensor update age:{" "}
+                  ESP32 update age:{" "}
                   <span className="text-white">
-                    {ageSeconds !== null
-                      ? `${ageSeconds}s`
+                    {esp32AgeSeconds !==
+                    null
+                      ? `${esp32AgeSeconds}s`
+                      : "--"}
+                  </span>
+                </div>
+
+                <div>
+                  Pi heartbeat:{" "}
+                  <span className="text-white">
+                    {runtime?.pi_last_seen
+                      ? new Date(
+                          runtime.pi_last_seen,
+                        ).toLocaleString()
+                      : "--"}
+                  </span>
+                </div>
+
+                <div>
+                  Pi heartbeat age:{" "}
+                  <span className="text-white">
+                    {piAgeSeconds !==
+                    null
+                      ? `${piAgeSeconds}s`
                       : "--"}
                   </span>
                 </div>
@@ -653,7 +831,7 @@ export default function SystemPage() {
                 </div>
 
                 <div>
-                  Camera realtime:{" "}
+                  Runtime realtime:{" "}
                   <span className="text-white">
                     {runtimeRealtimeConnected
                       ? "Connected"
@@ -664,7 +842,8 @@ export default function SystemPage() {
                 <div>
                   Camera tunnel:{" "}
                   <span className="text-white">
-                    {runtime?.camera_url
+                    {runtime
+                      ?.camera_url
                       ? "Available"
                       : "Unavailable"}
                   </span>
@@ -690,30 +869,36 @@ function StatusCard({
 
   const indicator = "●";
 
-  let textClass = "text-slate-400";
+  let textClass =
+    "text-slate-400";
 
   if (
     normalized === "online" ||
     normalized === "ready" ||
     normalized === "serial"
   ) {
-    textClass = "text-emerald-400";
+    textClass =
+      "text-emerald-400";
   }
 
   if (
     normalized === "waiting" ||
-    normalized === "simulated" ||
-    normalized === "simulator" ||
+    normalized ===
+      "simulated" ||
+    normalized ===
+      "simulator" ||
     normalized === "delayed"
   ) {
-    textClass = "text-amber-400";
+    textClass =
+      "text-amber-400";
   }
 
   if (
     normalized === "offline" ||
     normalized === "error"
   ) {
-    textClass = "text-red-400";
+    textClass =
+      "text-red-400";
   }
 
   return (
