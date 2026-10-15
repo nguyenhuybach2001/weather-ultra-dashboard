@@ -36,13 +36,7 @@ type WeatherReading = {
 };
 
 type MetricKey =
-  | "temperature"
-  | "humidity"
-  | "pressure"
-  | "co2"
-  | "pm25"
-  | "lux"
-  | "uv";
+  "temperature" | "humidity" | "pressure" | "co2" | "pm25" | "lux" | "uv";
 
 type MetricConfig = {
   key: MetricKey;
@@ -53,17 +47,17 @@ type MetricConfig = {
 const metrics: MetricConfig[] = [
   {
     key: "temperature",
-    name: "Temperature",
+    name: "Nhiệt độ",
     unit: "°C",
   },
   {
     key: "humidity",
-    name: "Humidity",
+    name: "Độ ẩm",
     unit: "%",
   },
   {
     key: "pressure",
-    name: "Pressure",
+    name: "Áp suất",
     unit: "hPa",
   },
   {
@@ -78,7 +72,7 @@ const metrics: MetricConfig[] = [
   },
   {
     key: "lux",
-    name: "Light",
+    name: "Ánh sáng",
     unit: "lux",
   },
   {
@@ -100,14 +94,9 @@ export default function HistoryPage() {
 
     const loadHistory = async () => {
       try {
-        const since = new Date(
-          Date.now() - 24 * 60 * 60 * 1000,
-        ).toISOString();
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-        const {
-          data,
-          error: supabaseError,
-        } = await supabase
+        const { data, error: supabaseError } = await supabase
           .from("weather_readings")
           .select(
             `
@@ -137,18 +126,13 @@ export default function HistoryPage() {
         }
 
         if (active) {
-          setHistory(
-            (data ?? []) as WeatherReading[],
-          );
+          setHistory((data ?? []) as WeatherReading[]);
 
           setError(false);
           setLoading(false);
         }
       } catch (err) {
-        console.error(
-          "Cannot load Supabase history:",
-          err,
-        );
+        console.error("Cannot load Supabase history:", err);
 
         if (active) {
           setError(true);
@@ -159,10 +143,7 @@ export default function HistoryPage() {
 
     void loadHistory();
 
-    const interval = setInterval(
-      loadHistory,
-      60_000,
-    );
+    const interval = setInterval(loadHistory, 60_000);
 
     return () => {
       active = false;
@@ -171,37 +152,29 @@ export default function HistoryPage() {
   }, []);
 
   const currentMetric =
-    metrics.find(
-      (item) => item.key === metric,
-    ) ?? metrics[0];
+    metrics.find((item) => item.key === metric) ?? metrics[0];
 
   const chartData = history.map((item) => ({
     ...item,
 
-    time: new Date(
-      item.timestamp,
-    ).toLocaleTimeString([], {
+    time: new Date(item.timestamp).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     }),
   }));
 
   const latestValue =
-    history.length > 0
-      ? history[history.length - 1][metric]
-      : null;
+    history.length > 0 ? history[history.length - 1][metric] : null;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="legacy-page min-h-screen bg-slate-950 text-white">
       <div className="mx-auto max-w-6xl p-5">
         <header className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">
-              HISTORY
-            </h1>
+            <h1 className="text-3xl font-bold">Lịch sử môi trường</h1>
 
             <p className="text-sm text-slate-400">
-              Weather Ultra · Last 24 hours
+              Weather Ultra · 24 giờ gần nhất
             </p>
           </div>
 
@@ -209,7 +182,7 @@ export default function HistoryPage() {
             href="/"
             className="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
           >
-            ← Home
+            ← Tổng quan
           </Link>
         </header>
 
@@ -217,9 +190,7 @@ export default function HistoryPage() {
           {metrics.map((item) => (
             <button
               key={item.key}
-              onClick={() =>
-                setMetric(item.key)
-              }
+              onClick={() => setMetric(item.key)}
               className={
                 metric === item.key
                   ? "rounded-xl bg-white px-4 py-2 text-sm font-medium text-black"
@@ -233,12 +204,11 @@ export default function HistoryPage() {
 
         {loading ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-slate-400">
-            Loading history...
+            Đang tải lịch sử...
           </div>
         ) : error ? (
           <div className="rounded-2xl border border-red-900 bg-red-950/30 p-5 text-red-300">
-            Không thể tải dữ liệu lịch sử từ
-            Supabase.
+            Không thể tải dữ liệu lịch sử từ Supabase.
           </div>
         ) : (
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -250,7 +220,6 @@ export default function HistoryPage() {
 
                 <div className="mt-1 text-3xl font-bold">
                   {latestValue ?? "--"}{" "}
-
                   <span className="text-base font-normal text-slate-400">
                     {currentMetric.unit}
                   </span>
@@ -258,13 +227,9 @@ export default function HistoryPage() {
               </div>
 
               <div className="text-right text-xs text-slate-500">
-                <div>
-                  {history.length} readings
-                </div>
+                <div>{history.length} bản ghi</div>
 
-                <div>
-                  Last 24 hours
-                </div>
+                <div>24 giờ gần nhất</div>
               </div>
             </div>
 
@@ -274,17 +239,9 @@ export default function HistoryPage() {
               </div>
             ) : (
               <div className="h-[360px] w-full">
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                >
-                  <LineChart
-                    data={chartData}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      opacity={0.15}
-                    />
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
 
                     <XAxis
                       dataKey="time"
@@ -303,10 +260,8 @@ export default function HistoryPage() {
 
                     <Tooltip
                       contentStyle={{
-                        backgroundColor:
-                          "#0f172a",
-                        border:
-                          "1px solid #334155",
+                        backgroundColor: "#0f172a",
+                        border: "1px solid #334155",
                         borderRadius: "12px",
                       }}
                     />

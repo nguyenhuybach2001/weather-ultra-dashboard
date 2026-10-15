@@ -5,7 +5,6 @@ import Link from "next/link";
 
 import { supabase } from "@/lib/supabase";
 
-
 type WeatherData = {
   device_id?: string;
   timestamp: string;
@@ -27,421 +26,243 @@ type WeatherData = {
   device_status: string;
 };
 
-
-function formatValue(
-  value: number | null | undefined,
-  digits = 1,
-  unit = "",
-) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+function formatValue(value: number | null | undefined, digits = 1, unit = "") {
+  if (value === null || value === undefined) {
     return "--";
   }
 
   return `${value.toFixed(digits)}${unit}`;
 }
 
-
 export default function Home() {
-  const [weather, setWeather] =
-    useState<WeatherData | null>(null);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
 
-  const [error, setError] =
-    useState(false);
+  const [now, setNow] = useState(0);
+  const [error, setError] = useState(false);
 
-  const [realtimeConnected, setRealtimeConnected] =
-    useState(false);
-
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   useEffect(() => {
     let active = true;
-
+    const clock = setInterval(() => setNow(Date.now()), 1000);
 
     async function loadInitialData() {
-      const {
-        data,
-        error: loadError,
-      } = await supabase
+      const { data, error: loadError } = await supabase
         .from("device_latest")
         .select("*")
-        .eq(
-          "device_id",
-          "weather-ultra-01",
-        )
+        .eq("device_id", "weather-ultra-01")
         .maybeSingle();
-
 
       if (!active) {
         return;
       }
 
-
       if (loadError) {
-        console.error(
-          "Supabase initial data error:",
-          loadError,
-        );
+        console.error("Supabase initial data error:", loadError);
 
         setError(true);
 
         return;
       }
-
 
       if (!data) {
-        console.warn(
-          "No device_latest data found",
-        );
+        console.warn("No device_latest data found");
 
         setError(true);
 
         return;
       }
 
-
-      setWeather(
-        data as WeatherData,
-      );
+      setWeather(data as WeatherData);
 
       setError(false);
     }
 
-
     void loadInitialData();
 
-
     const channel = supabase
-      .channel(
-        "weather-ultra-live",
-      )
+      .channel("weather-ultra-live")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "device_latest",
-          filter:
-            "device_id=eq.weather-ultra-01",
+          filter: "device_id=eq.weather-ultra-01",
         },
         (payload) => {
           if (!active) {
             return;
           }
 
+          console.log("Supabase realtime:", payload.new);
 
-          console.log(
-            "Supabase realtime:",
-            payload.new,
-          );
-
-
-          if (
-            payload.new &&
-            Object.keys(
-              payload.new,
-            ).length > 0
-          ) {
-            setWeather(
-              payload.new as WeatherData,
-            );
+          if (payload.new && Object.keys(payload.new).length > 0) {
+            setWeather(payload.new as WeatherData);
 
             setError(false);
           }
         },
       )
-      .subscribe(
-        (status) => {
-          console.log(
-            "Realtime status:",
-            status,
-          );
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
 
+        if (!active) {
+          return;
+        }
 
-          if (!active) {
-            return;
-          }
+        if (status === "SUBSCRIBED") {
+          setRealtimeConnected(true);
 
+          setError(false);
+        }
 
-          if (
-            status ===
-            "SUBSCRIBED"
-          ) {
-            setRealtimeConnected(
-              true,
-            );
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRealtimeConnected(false);
 
-            setError(false);
-          }
-
-
-          if (
-            status ===
-              "CHANNEL_ERROR" ||
-            status ===
-              "TIMED_OUT" ||
-            status ===
-              "CLOSED"
-          ) {
-            setRealtimeConnected(
-              false,
-            );
-
-            setError(true);
-          }
-        },
-      );
-
+          setError(true);
+        }
+      });
 
     return () => {
       active = false;
+      clearInterval(clock);
 
-      void supabase.removeChannel(
-        channel,
-      );
+      void supabase.removeChannel(channel);
     };
   }, []);
 
-
+  const age = weather
+    ? (now - new Date(weather.timestamp).getTime()) / 1000
+    : Infinity;
+  const stale = !Number.isFinite(age) || age > 7;
+  const state = error
+    ? "Lỗi kết nối"
+    : !weather
+      ? "Đang kết nối"
+      : stale
+        ? "Dữ liệu đã cũ"
+        : realtimeConnected
+          ? "Đang trực tiếp"
+          : "Đang nối lại";
+  const sensors = [
+    { title: "Độ ẩm", value: weather?.humidity, unit: "% RH", icon: "◒" },
+    { title: "Áp suất", value: weather?.pressure, unit: "hPa", icon: "◎" },
+    {
+      title: "Nồng độ CO₂",
+      value: weather?.co2,
+      unit: "ppm · CO₂",
+      icon: "◌",
+    },
+    { title: "Bụi mịn PM2.5", value: weather?.pm25, unit: "µg/m³", icon: "⠿" },
+    { title: "Ánh sáng", value: weather?.lux, unit: "lux", icon: "☼" },
+    {
+      title: "Chỉ số UV",
+      value: weather?.uv,
+      unit: "UV · giá trị thử nghiệm",
+      icon: "↗",
+    },
+  ];
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-5xl p-5">
-
-        <header className="mb-8 flex items-center justify-between">
-
+    <main className="page">
+      <header className="page-heading">
+        <div>
+          <div className="eyebrow">MÔI TRƯỜNG QUANH BẠN</div>
+          <h1>Tổng quan hôm nay</h1>
+          <p>Theo dõi không gian sống, từ những thay đổi nhỏ nhất.</p>
+        </div>
+        <span
+          role="status"
+          className={`connection ${!error && weather && !stale ? "live" : "waiting"}`}
+        >
+          ● {state}
+        </span>
+      </header>
+      {error && (
+        <div className="notice" role="alert">
+          Không thể nhận dữ liệu mới. Kiểm tra mạng hoặc cấu hình Supabase trong
+          phần Thiết bị.
+        </div>
+      )}
+      {weather && stale && (
+        <div className="notice">
+          Số đo dưới đây là lần nhận gần nhất, không phải dữ liệu hiện tại.
+        </div>
+      )}
+      <div className="dashboard-grid">
+        <section className="hero-weather" aria-label="Nhiệt độ hiện tại">
+          <div className="hero-top">
+            <span>TRẠM WEATHER ULTRA</span>
+            <span>01 / ☀</span>
+          </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              WEATHER ULTRA
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-400">
-              Intelligent Environmental Monitoring Station
-            </p>
-          </div>
-
-
-          <div className="flex items-center gap-4">
-
-            <Link
-              href="/system"
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm"
-            >
-              System
-            </Link>
-
-            <Link
-              href="/history"
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm"
-            >
-              History
-            </Link>
-
-
-            <div
-              className={
-                error
-                  ? "text-red-400"
-                  : "text-emerald-400"
-              }
-            >
-              ●{" "}
-              {error
-                ? "OFFLINE"
-                : realtimeConnected
-                  ? "LIVE"
-                  : "ONLINE"}
+            <div className="temperature">
+              {formatValue(weather?.temperature)}
+              <small>°C</small>
             </div>
-
+            <p className="hero-caption">Nhiệt độ tại cảm biến SHT45</p>
           </div>
-        </header>
-
-
-        {!weather ? (
-
-          <div className="py-20 text-center text-slate-400">
-            Đang kết nối Weather Ultra...
+          <div className="hero-bottom">
+            <span>
+              {weather ? "Cập nhật gần nhất" : "Chờ dữ liệu từ thiết bị"}
+            </span>
+            <span>
+              {weather
+                ? new Date(weather.timestamp).toLocaleTimeString("vi-VN")
+                : "—"}
+            </span>
           </div>
-
-        ) : (
-
-          <>
-
-            <section className="mb-8 text-center">
-
-              <div className="text-7xl font-bold">
-                {formatValue(
-                  weather.temperature,
-                  1,
-                  "°C",
-                )}
+        </section>
+        <section className="sensor-grid" aria-label="Thông số môi trường">
+          {sensors.map((s) => (
+            <div className="sensor-card" key={s.title}>
+              <div className="sensor-title">
+                {s.title}
+                <span className="sensor-symbol" aria-hidden="true">
+                  {s.icon}
+                </span>
               </div>
-
-              <div className="mt-2 text-lg text-slate-400">
-                Current Temperature
+              <div className="sensor-value">
+                {formatValue(s.value, s.unit.includes("ppm") ? 0 : 1)}
+                <small>{s.unit}</small>
               </div>
-
-            </section>
-
-
-            <section className="grid grid-cols-2 gap-4 md:grid-cols-3">
-
-              <SensorCard
-                title="Humidity"
-                value={formatValue(
-                  weather.humidity,
-                  1,
-                  " %",
-                )}
-              />
-
-              <SensorCard
-                title="Pressure"
-                value={formatValue(
-                  weather.pressure,
-                  1,
-                  " hPa",
-                )}
-              />
-
-              <SensorCard
-                title="CO₂"
-                value={formatValue(
-                  weather.co2,
-                  0,
-                  " ppm",
-                )}
-              />
-
-              <SensorCard
-                title="PM2.5"
-                value={formatValue(
-                  weather.pm25,
-                  1,
-                  " µg/m³",
-                )}
-              />
-
-              <SensorCard
-                title="Light"
-                value={formatValue(
-                  weather.lux,
-                  1,
-                  " lux",
-                )}
-              />
-
-              <SensorCard
-                title="UV"
-                value={formatValue(
-                  weather.uv,
-                  1,
-                )}
-              />
-
-            </section>
-
-
-            <section className="mt-6">
-
-              <h2 className="mb-3 text-lg font-semibold">
-                Particulate Matter
-              </h2>
-
-
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-
-                <SmallCard
-                  title="PM1.0"
-                  value={weather.pm1}
-                />
-
-                <SmallCard
-                  title="PM2.5"
-                  value={weather.pm25}
-                />
-
-                <SmallCard
-                  title="PM4"
-                  value={weather.pm4}
-                />
-
-                <SmallCard
-                  title="PM10"
-                  value={weather.pm10}
-                />
-
-              </div>
-            </section>
-
-
-            <footer className="mt-8 text-center text-xs text-slate-500">
-
-              Last update:{" "}
-
-              {new Date(
-                weather.timestamp,
-              ).toLocaleString()}
-
-            </footer>
-
-          </>
-        )}
-
+            </div>
+          ))}
+        </section>
+      </div>
+      <div className="section-heading">
+        <h2>Chi tiết bụi trong không khí</h2>
+        <span>SPS30 · Nồng độ khối lượng</span>
+      </div>
+      <section className="dust-grid">
+        {[
+          ["PM1.0", weather?.pm1],
+          ["PM2.5", weather?.pm25],
+          ["PM4", weather?.pm4],
+          ["PM10", weather?.pm10],
+        ].map(([label, value]) => (
+          <div className="dust-card" key={String(label)}>
+            <span>{label}</span>
+            <strong>{formatValue(value as number | undefined | null)}</strong>
+            <small>µg/m³</small>
+          </div>
+        ))}
+      </section>
+      <div className="quick-links">
+        <Link href="/history">
+          Khám phá lịch sử 24 giờ <span>↗</span>
+        </Link>
+        <Link href="/camera">
+          Quan sát camera <span>↗</span>
+        </Link>
+        <Link href="/system">
+          Kiểm tra các thiết bị <span>↗</span>
+        </Link>
       </div>
     </main>
-  );
-}
-
-
-function SensorCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-
-      <div className="text-sm text-slate-400">
-        {title}
-      </div>
-
-      <div className="mt-2 text-2xl font-semibold">
-        {value}
-      </div>
-
-    </div>
-  );
-}
-
-
-function SmallCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number | null;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-
-      <div className="text-xs text-slate-400">
-        {title}
-      </div>
-
-      <div className="mt-1 text-xl font-semibold">
-        {formatValue(
-          value,
-          1,
-        )}
-      </div>
-
-      <div className="text-xs text-slate-500">
-        µg/m³
-      </div>
-
-    </div>
   );
 }

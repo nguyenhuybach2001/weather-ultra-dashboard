@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Weather Ultra dashboard
 
-## Getting Started
+Next.js dashboard for desktop, phone/PWA and a Raspberry Pi 5 touchscreen. Existing Supabase reads and Realtime channels for `device_latest`, `weather_readings`, and `device_runtime` are retained. Camera remains an MJPEG stream at the runtime URL + `/stream`. `lib/api.ts` HTTP/WebSocket URL helpers are unchanged. Companion FastAPI alert integration is in `nguyenhuybach2001/weather-ultra-cloud`; firmware/Serial ingestion is not present here.
 
-First, run the development server:
+## Run
 
-```bash
+Requires a Node.js release supported by Next.js 16 (20.9+; use a maintained LTS).
+
+```sh
+npm ci
+cp .env.example .env.local
+# Fill in the existing public Supabase URL and publishable key.
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Never put a Supabase service-role key in a `NEXT_PUBLIC_` variable. Existing Supabase RLS and Realtime publication settings still apply. Build verification can use dummy public Supabase values; live data verification requires your real project.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## UI and kiosk
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Shared navigation: overview, history, camera, device status, settings.
+- Desktop sidebar; phone bottom navigation with safe-area padding.
+- Compact landscape layout at 600px+ width and up to 600px height, including 800×480 and 720×480.
+- `/?kiosk=1` enables a compact shell that persists across in-app navigation. The toolbar can exit kiosk mode. Browser fullscreen is configured separately on the Pi.
+- All existing measurements remain visible. The overview labels readings older than 7 seconds as stale. This matches the existing system status timing; adjust together if your ingestion cadence differs.
+- No invented forecasts or voice scheduler: those backend features are not in this repo.
 
-## Learn More
+## Install / PWA
 
-To learn more about Next.js, take a look at the following resources:
+Serve over HTTPS (localhost is an exception for development). `http://192.168...` on a phone is **not** a secure context. Keep camera tunnels HTTPS when the dashboard uses HTTPS to avoid mixed content. The existing backend URL helpers still target port 8000; those endpoints need their existing network/TLS configuration if used.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Android/Chromium: when `beforeinstallprompt` is available, Settings shows an install button. Otherwise use the browser's install/add-to-home-screen menu. An automatic browser prompt is not guaranteed.
+- iOS/iPadOS: Safari → Share → Add to Home Screen, then launch from the icon. Web Push requires iOS/iPadOS 16.4+ and a Home Screen web app.
+- Permission is requested **only** from the user's Enable Notifications click. Rejected permission is explained, never repeatedly prompted.
+- The service worker caches only `/offline.html`, not API, camera, HTML dashboards, Supabase responses, or RSC payloads. This intentionally avoids presenting stale telemetry as current. It handles push and same-origin notification clicks.
+- Service worker updates follow the browser lifecycle; close existing app tabs and reopen to activate an update. No forced reload interrupts camera or live readings.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Real push setup
 
-## Deploy on Vercel
+Push is optional. The dashboard works without it and Settings reports that the server is not configured.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Apply `supabase/migrations/202610150001_push_subscriptions.sql` in your existing Supabase project's SQL editor. This only adds a separate table, enables RLS, and denies browser access.
+2. Generate VAPID keys: `npx web-push generate-vapid-keys`. Keep the private key stable and server-only. Changing VAPID keys requires resubscribing browsers.
+3. Configure all variables in `.env.example` in your hosting environment. `APP_ORIGIN` must exactly match the dashboard origin (e.g. `https://weather-ultra-dashboard.vercel.app`, no trailing slash). Use a real contact email for `VAPID_SUBJECT`.
+4. Generate different random secrets for `PUSH_PAIRING_CODE` (at least 16 characters) and `PUSH_SEND_SECRET` (at least 32). For example run `openssl rand -hex 24` separately for each. Share the pairing code privately with station users; the send secret belongs only on the server/Pi.
+5. Deploy the dashboard with HTTPS, visit Settings, enter the pairing code, and click Enable Notifications. The browser subscription is saved in Supabase, not in process memory. Only its random management token is retained locally; the database stores a hash. Retry is available if database saving fails after browser permission is granted.
+6. Wire the existing FastAPI alert logic to the server-to-server endpoint below. The companion cloud repository now includes an optional persistent alert hook for `/api/device/readings`. It must actually receive Pi readings to generate alerts.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### FastAPI / Pi integration
+
+When an alert transitions into its active state, send a POST from the backend. Keep thresholds, hysteresis, cooldown and deduplication in that backend; do not emit an alert for every sensor sample. `tag` groups/replaces matching displayed notifications, but is not server-side deduplication. Monitor device-offline events from an independent server because an offline Pi cannot report its own outage.
+
+```python
+import os
+import requests
+
+response = requests.post(
+    os.environ['DASHBOARD_ORIGIN'] + '/api/push/send',
+    headers={'Authorization': 'Bearer ' + os.environ['PUSH_SEND_SECRET']},
+    json={
+        'title': 'Weather Ultra · Cảnh báo từ trạm',
+        'body': 'Có thông số vượt ngưỡng bạn đã cấu hình. Mở ứng dụng để xem.',
+        'tag': 'environment-alert',
+        'url': '/',
+    },
+    timeout=55,
+)
+response.raise_for_status()
+print(response.json())  # {sent, expired, failed}; sent means accepted by push service, not viewed.
+```
+
+The same request can send a first test notification after registering a browser. A send with zero subscriptions returns `sent: 0`, which does not prove phone delivery. There is intentionally no unauthenticated broadcast/test button.
+
+### Server behavior and boundaries
+
+- `/api/push/config` reports readiness and the public VAPID key; it verifies table access.
+- `/api/push/subscriptions` POST requires same-origin and the pairing code; DELETE requires same-origin and the unguessable browser management token.
+- `/api/push/send` requires a separate server bearer secret. Payloads are bounded, notification routes are allowlisted, and endpoint hosts are restricted to known browser push providers to prevent arbitrary server-side requests.
+- 404/410 endpoints are removed; transient failures are counted and reported with HTTP 502. Retry at the backend with backoff, accounting for possible partial delivery. No automatic retry loop floods phones.
+- Designed for a personal station, up to 100 browser subscriptions per send. Above that limit the sender explicitly refuses and needs a queued delivery service. It sends in batches of 20 with 8-second request timeouts and a 5-minute TTL.
+- Put hosting/WAF rate limits on subscription and config routes before opening registration widely. For a multi-user product replace the shared station pairing code with authenticated membership and per-user authorization.
+- Clearing browser storage can lose its management token; remove stale rows using the Supabase console or wait for provider expiry cleanup. A browser subscription alone is not proof that the server still has its row; re-pair after restoring the database.
+
+## Verification
+
+```sh
+npm run lint
+npm run build
+npx playwright install chromium
+npm test
+# Or use an already-installed Chrome: PLAYWRIGHT_CHANNEL=chrome npm test
+```
+
+The browser suite uses a production server built with placeholder public Supabase values and mocked Supabase HTTP/WebSocket traffic, so it never reads or writes real station data. It covers responsive navigation, stale readings, camera URL usage, history, PWA assets/offline handling, install prompts and notification permission behavior. Separate request tests cover input validation and disabled push configuration.
+
+Real iOS/Android installation, background push delivery, production RLS, live sensor updates and the Raspberry Pi camera must still be checked on your devices with the actual environment and backend configured.
+
+References: [Next.js PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps), [WebKit Home Screen Web Push](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
+Dependency maintenance: Next.js and eslint-config-next updated to 16.4.1. Production dependency audit is clean; five high-severity development-only findings remain through the ESLint/fast-glob/braces chain. The suggested forced fix would downgrade framework tooling, so it was not applied.
