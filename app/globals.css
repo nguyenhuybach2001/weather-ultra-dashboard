@@ -926,3 +926,9 @@ input {
 .audio-switch[aria-checked="true"]::before { background: var(--green); }
 .audio-switch[aria-checked="true"] span { transform: translateX(28px); }
 @media (prefers-reduced-motion: reduce) { .audio-switch span, .audio-switch::before { transition: none; } }
+
+.location-results { display: grid; gap: 8px; margin-top: 12px; }
+.location-results button { text-align: left; white-space: normal; }
+.morning-help { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.morning-help a { text-decoration: underline; }
+.morning-panel details { margin-top: 14px; line-height: 1.6; }

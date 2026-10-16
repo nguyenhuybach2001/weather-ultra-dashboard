@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import MorningSettings from "@/components/MorningSettings";
 import AudioSettings from "@/components/AudioSettings";
 import { usePwa } from "@/components/PwaProvider";
 export default function SettingsPage() {
@@ -137,6 +138,7 @@ export default function SettingsPage() {
       </header>
       <div className="settings-grid">
         <AudioSettings />
+        <MorningSettings />
         <section className="panel">
           <h2>Cài Weather Ultra</h2>
           {pwa.installed ? (

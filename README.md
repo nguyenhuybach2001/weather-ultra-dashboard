@@ -25,7 +25,7 @@ Never put a Supabase service-role key in a `NEXT_PUBLIC_` variable. Existing Sup
 - Compact landscape layout at 600px+ width and up to 600px height, including 800×480 and 720×480.
 - `/?kiosk=1` enables a compact shell that persists across in-app navigation. The toolbar can exit kiosk mode. Browser fullscreen is configured separately on the Pi.
 - All existing measurements remain visible. The overview labels readings older than 7 seconds as stale. This matches the existing system status timing; adjust together if your ingestion cadence differs.
-- No invented forecasts or voice scheduler: those backend features are not in this repo.
+- Morning sensor bulletins use archived station readings and a separately installed Pi scheduler. Apply the morning SQL migration and update the Pi worker before enabling a schedule.
 
 ## Install / PWA
 
@@ -100,3 +100,13 @@ Real iOS/Android installation, background push delivery, production RLS, live se
 References: [Next.js PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps), [WebKit Home Screen Web Push](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
 
 Dependency maintenance: Next.js and eslint-config-next updated to 16.4.1. Production dependency audit is clean; five high-severity development-only findings remain through the ESLint/fast-glob/braces chain. The suggested forced fix would downgrade framework tooling, so it was not applied.
+
+## Morning sensor bulletin
+
+Apply `supabase/migrations/202610160002_morning.sql` and install the updated Pi backend. No new Vercel secrets are needed. Schedule control is public by the owner's choice, like speaker volume.
+
+The Pi archives every parsed sample locally, preserving original values, validated values, per-field quality, source, sensor timestamp and UTC receipt time. Existing 60-second history is unchanged. Simulator samples are excluded from spoken analysis. There is no automatic deletion policy; monitor disk space and back up the archive. These records are a foundation for later modeling, not a trained forecast model.
+
+The morning bulletin describes measured temperature/humidity/pressure and a conservative three-hour pressure trend. It does not predict rain or claim to know conditions outside the sensor location. No weather provider or location is needed. Speech generation uses edge-tts online.
+
+Schedules default to 07:00 Vietnam time, disabled until enabled/saved. Pi persists one attempt per day, starting only within five minutes after the scheduled time. A muted or busy speaker skips the reading; failed readings do not retry automatically. Read now commands expire after 60 seconds. All speech uses the existing volume setting and output. The Pi may keep using the last received schedule while Supabase is offline; schedule changes take effect only after acknowledgment.
