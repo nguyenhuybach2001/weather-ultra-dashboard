@@ -932,3 +932,13 @@ input {
 .morning-help { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .morning-help a { text-decoration: underline; }
 .morning-panel details { margin-top: 14px; line-height: 1.6; }
+
+.placement-choices { border: 0; padding: 0; margin: 24px 0 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+.placement-choices legend { margin-bottom: 12px; font-weight: 600; }
+.placement-choice { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; min-height: 48px; }
+.placement-choice.selected { background: #e9f4ee; border-color: var(--green); color: #17634f; }
+.placement-choice input { width: 18px; height: 18px; min-height: 0; padding: 0; accent-color: var(--green); }
+.placement-sensors { display: grid; gap: 12px; }
+.placement-sensors label { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.placement-sensors select { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: white; color: var(--ink); font: inherit; }
+.placement-sensors select:focus-visible { outline: 3px solid #e8a343; outline-offset: 3px; }

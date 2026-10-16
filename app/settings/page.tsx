@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import MorningSettings from "@/components/MorningSettings";
+import PlacementSettings from "@/components/PlacementSettings";
 import AudioSettings from "@/components/AudioSettings";
 import { usePwa } from "@/components/PwaProvider";
 export default function SettingsPage() {
@@ -137,6 +138,7 @@ export default function SettingsPage() {
         </div>
       </header>
       <div className="settings-grid">
+        <PlacementSettings />
         <AudioSettings />
         <MorningSettings />
         <section className="panel">

@@ -110,3 +110,7 @@ The Pi archives every parsed sample locally, preserving original values, validat
 The morning bulletin describes measured temperature/humidity/pressure and a conservative three-hour pressure trend. It does not predict rain or claim to know conditions outside the sensor location. No weather provider or location is needed. Speech generation uses edge-tts online.
 
 Schedules default to 07:00 Vietnam time, disabled until enabled/saved. Pi persists one attempt per day, starting only within five minutes after the scheduled time. A muted or busy speaker skips the reading; failed readings do not retry automatically. Read now commands expire after 60 seconds. All speech uses the existing volume setting and output. The Pi may keep using the last received schedule while Supabase is offline; schedule changes take effect only after acknowledgment.
+
+## Sensor placement
+
+Apply `202610160003_placement.sql` before installing the Pi placement update. Settings support indoor/outdoor/mixed per sensor and an independent sky-facing-camera flag. The API preserves public control as requested by the owner. Changes are pending until Pi acknowledgment; the Pi snapshots each applied revision into new raw/archive, local history and cloud records. Existing samples remain unknown rather than being relabelled. No new Vercel variables are required. This metadata does not enable image inference or validate a weather forecast model.
