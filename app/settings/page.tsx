@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import AudioSettings from "@/components/AudioSettings";
 import { usePwa } from "@/components/PwaProvider";
 export default function SettingsPage() {
   const pwa = usePwa();
@@ -135,6 +136,7 @@ export default function SettingsPage() {
         </div>
       </header>
       <div className="settings-grid">
+        <AudioSettings />
         <section className="panel">
           <h2>Cài Weather Ultra</h2>
           {pwa.installed ? (
