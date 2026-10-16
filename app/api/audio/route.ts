@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { database, json, readBody, sameOrigin, secretMatches } from "@/lib/push-server";
+import { database, json, readBody, sameOrigin } from "@/lib/push-server";
 export const runtime = "nodejs";
 const device = () => process.env.WEATHER_DEVICE_ID || "weather-ultra-01";
 function ready() {
-  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.APP_ORIGIN && (process.env.AUDIO_CONTROL_CODE?.length ?? 0) >= 16);
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.APP_ORIGIN);
 }
 export async function GET() {
   if (!ready()) return json({ ready: false });
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return json({ error: "Origin không hợp lệ." }, 403);
   try {
     const body = await readBody(request) as Record<string, unknown>;
-    if (!body || !secretMatches(body.code, process.env.AUDIO_CONTROL_CODE)) return json({ error: "Mã điều khiển không đúng." }, 401);
+    if (!body) return json({ error: "Thiết lập không hợp lệ." }, 400);
     if (!Number.isInteger(body.volume) || Number(body.volume) < 0 || Number(body.volume) > 100 || typeof body.muted !== "boolean" || typeof body.test !== "boolean") return json({ error: "Thiết lập không hợp lệ." }, 400);
     const db = database();
     const { data, error } = await db.from("device_audio_status").select("last_seen").eq("device_id", device()).maybeSingle();

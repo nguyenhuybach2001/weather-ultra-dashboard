@@ -5,7 +5,6 @@ export default function AudioSettings() {
   const [state, setState] = useState<State>({ ready: false });
   const [volume, setVolume] = useState(70);
   const [muted, setMuted] = useState(false);
-  const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState("");
@@ -30,7 +29,7 @@ export default function AudioSettings() {
   async function save(test: boolean) {
     setBusy(true); setMessage(""); setRevision("");
     try {
-      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ volume, muted, code, test }), signal: AbortSignal.timeout(10000) });
+      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ volume, muted, test }), signal: AbortSignal.timeout(10000) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setRevision(data.revision);
@@ -41,15 +40,14 @@ export default function AudioSettings() {
   return <section className="panel">
     <h2>Loa tại trạm</h2>
     <p>Điều chỉnh giọng đọc phát trên Raspberry Pi.</p>
-    <div className="notice">{!state.ready ? "Chưa cấu hình dịch vụ điều khiển loa." : state.online ? `Pi đã kết nối · Mức đang áp dụng: ${state.status?.muted ? "Tắt tiếng" : `${state.status?.volume}%`}` : "Pi offline hoặc chưa kết nối dịch vụ loa."}</div>
-    <label className="field">Âm lượng: {volume}%
+    <div className={`audio-connection ${state.online ? "is-online" : ""}`}>{!state.ready ? "Chưa cấu hình dịch vụ điều khiển loa." : state.online ? `Pi đã kết nối · Mức đang áp dụng: ${state.status?.muted ? "Tắt tiếng" : `${state.status?.volume}%`}` : "Pi offline hoặc chưa kết nối dịch vụ loa."}</div>
+    <label className="field audio-volume"><span className="audio-volume-heading">Âm lượng <strong>{volume}%</strong></span>
       <input aria-label="Âm lượng loa Pi" type="range" min="0" max="100" value={volume} onChange={e => setVolume(Number(e.target.value))} disabled={!state.online || busy} />
     </label>
-    <label><input type="checkbox" checked={muted} onChange={e => setMuted(e.target.checked)} disabled={!state.online || busy} /> Tắt tiếng</label>
-    <label className="field">Mã điều khiển loa<input type="password" autoComplete="off" value={code} onChange={e => setCode(e.target.value)} placeholder="Mã riêng của chủ trạm" /></label>
+    <div className="audio-mute-row"><div><strong>Tắt tiếng</strong><p>Nhấn lưu để áp dụng cho loa tại trạm.</p></div><button type="button" role="switch" aria-label="Tắt tiếng loa tại trạm" aria-checked={muted} className="audio-switch" onClick={() => setMuted(!muted)} disabled={!state.online || busy}><span /></button></div>
     <div className="button-row">
-      <button className="primary-button" onClick={() => save(false)} disabled={!state.online || busy || !code}>Lưu âm lượng</button>
-      <button className="secondary-button" onClick={() => save(true)} disabled={!state.online || busy || !code || muted || volume === 0}>Lưu & phát thử</button>
+      <button className="primary-button" onClick={() => save(false)} disabled={!state.online || busy}>Lưu âm lượng</button>
+      <button className="secondary-button" onClick={() => save(true)} disabled={!state.online || busy || muted || volume === 0}>Lưu & phát thử</button>
     </div>
     <p role="status">{revision && state.status?.applied_revision === revision ? "Pi đã áp dụng thiết lập." : message}</p>
     {state.status?.test_result && <p>Lần phát thử gần nhất: {state.status.test_result}</p>}
