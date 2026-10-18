@@ -1,4 +1,5 @@
 "use client";
+import MicrophoneStatus from "@/components/MicrophoneStatus";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -263,6 +264,7 @@ export default function Home() {
           Kiểm tra các thiết bị <span>↗</span>
         </Link>
       </div>
+      <MicrophoneStatus />
     </main>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import MicrophoneStatus from "@/components/MicrophoneStatus";
 import { useEffect, useState } from "react";
 import MorningSettings from "@/components/MorningSettings";
 import PlacementSettings from "@/components/PlacementSettings";
@@ -140,6 +141,7 @@ export default function SettingsPage() {
       <div className="settings-grid">
         <PlacementSettings />
         <AudioSettings />
+        <MicrophoneStatus />
         <MorningSettings />
         <section className="panel">
           <h2>Cài Weather Ultra</h2>

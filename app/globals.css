@@ -942,3 +942,5 @@ input {
 .placement-sensors label { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
 .placement-sensors select { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: white; color: var(--ink); font: inherit; }
 .placement-sensors select:focus-visible { outline: 3px solid #e8a343; outline-offset: 3px; }
+
+.microphone-panel{margin-top:20px}.settings-grid .microphone-panel{margin-top:0}.mic-heading{display:flex;gap:14px;align-items:center}.mic-icon{font-size:28px;color:var(--accent,#173d3e)}.mic-heading h2{margin:0}.microphone-panel .audio-connection div{font-size:.9rem;margin-top:6px}.mic-hint{font-size:.9rem}
