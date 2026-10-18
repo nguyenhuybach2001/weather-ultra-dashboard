@@ -516,7 +516,6 @@ export default function SystemPage() {
             <section className="mb-6 grid grid-cols-2 gap-3">
               <StatusCard name="Camera" status={cameraStatus} />
 
-              <StatusCard name="Giọng nói" status="waiting" />
             </section>
 
             <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
