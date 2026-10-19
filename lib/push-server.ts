@@ -7,8 +7,6 @@ export function configured() {
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
     process.env.VAPID_PRIVATE_KEY &&
     process.env.VAPID_SUBJECT &&
-    process.env.PUSH_PAIRING_CODE &&
-    process.env.PUSH_PAIRING_CODE.length >= 16 &&
     process.env.PUSH_SEND_SECRET &&
     process.env.PUSH_SEND_SECRET.length >= 32 &&
     process.env.APP_ORIGIN,

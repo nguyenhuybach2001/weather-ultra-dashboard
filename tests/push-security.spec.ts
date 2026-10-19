@@ -18,7 +18,6 @@ test.beforeEach(() => {
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: "test",
     VAPID_PRIVATE_KEY: "test",
     VAPID_SUBJECT: "mailto:test@example.com",
-    PUSH_PAIRING_CODE: "test-pairing-code-1234",
     PUSH_SEND_SECRET: "test-send-secret-12345678901234567890",
   });
 });
@@ -38,7 +37,7 @@ function request(
     body: JSON.stringify(body),
   });
 }
-test("cross-origin writes, wrong pairing codes and invalid tokens never reach database", async () => {
+test("cross-origin writes and invalid tokens never reach database", async () => {
   expect(
     (
       await subscribe(
@@ -51,14 +50,9 @@ test("cross-origin writes, wrong pairing codes and invalid tokens never reach da
     ).status,
   ).toBe(403);
   expect(
-    (await subscribe(request("/api/push/subscriptions", { code: "wrong" })))
-      .status,
-  ).toBe(401);
-  expect(
     (
       await subscribe(
         request("/api/push/subscriptions", {
-          code: process.env.PUSH_PAIRING_CODE,
           token: "bad",
         }),
       )
@@ -72,6 +66,32 @@ test("cross-origin writes, wrong pairing codes and invalid tokens never reach da
     ).status,
   ).toBe(400);
 });
+test("visitors can register without a pairing code", async () => {
+  delete process.env.PUSH_PAIRING_CODE;
+  const originalFetch = globalThis.fetch;
+  let saved = false;
+  globalThis.fetch = async (input, init) => {
+    expect(String(input)).toContain("/rest/v1/push_subscriptions");
+    const row = JSON.parse(String(init?.body));
+    expect(row.endpoint).toBe("https://fcm.googleapis.com/a");
+    expect(row.token_hash).toMatch(/^[a-f0-9]{64}$/);
+    saved = true;
+    return new Response(null, { status: 201 });
+  };
+  try {
+    const response = await subscribe(request("/api/push/subscriptions", {
+      token: "a".repeat(64),
+      subscription: {
+        endpoint: "https://fcm.googleapis.com/a",
+        keys: { p256dh: "a".repeat(87), auth: "a".repeat(22) },
+      },
+    }));
+    expect(response.status).toBe(200);
+    expect(saved).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 test("broadcast needs a separate secret and validates payload", async () => {
   expect(
     (await send(request("/api/push/send", { title: "x", body: "x" }))).status,
@@ -82,7 +102,7 @@ test("broadcast needs a separate secret and validates payload", async () => {
         request(
           "/api/push/send",
           { title: "x", body: "x" },
-          { Authorization: `Bearer ${process.env.PUSH_PAIRING_CODE}` },
+          { Authorization: `Bearer not-the-send-secret` },
         ),
       )
     ).status,

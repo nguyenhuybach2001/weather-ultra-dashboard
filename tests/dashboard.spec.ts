@@ -163,7 +163,6 @@ test("permission is never requested on load, denial is explained after user clic
   expect(
     await page.locator("html").getAttribute("data-permission-asked"),
   ).toBeNull();
-  await page.getByLabel("Mã ghép nối của trạm").fill("test-pairing-code");
   await page
     .getByRole("button", { name: "Bật thông báo", exact: true })
     .click();
@@ -282,11 +281,10 @@ test("registration failures can retry and unsubscribe clears server registration
   });
   await page.goto("/settings");
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.getByLabel("Mã ghép nối của trạm").fill("test-pairing-code");
   await page
     .getByRole("button", { name: "Bật thông báo", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Chưa lưu được đăng ký");
+  await expect(page.getByRole("status").filter({ hasText: "Chưa lưu được đăng ký" })).toBeVisible();
   expect(saved).toBe(false);
   await page
     .getByRole("button", { name: "Bật thông báo", exact: true })
@@ -296,7 +294,7 @@ test("registration failures can retry and unsubscribe clears server registration
   await page
     .getByRole("button", { name: "Tắt thông báo", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Đã tắt thông báo");
+  await expect(page.getByRole("status").filter({ hasText: "Đã tắt thông báo" })).toBeVisible();
   expect(deleted).toBe(true);
   expect(
     await page.evaluate(() => localStorage.getItem("push-saved")),

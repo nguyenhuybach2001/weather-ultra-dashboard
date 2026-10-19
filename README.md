@@ -44,8 +44,8 @@ Push is optional. The dashboard works without it and Settings reports that the s
 1. Apply `supabase/migrations/202610150001_push_subscriptions.sql` in your existing Supabase project's SQL editor. This only adds a separate table, enables RLS, and denies browser access.
 2. Generate VAPID keys: `npx web-push generate-vapid-keys`. Keep the private key stable and server-only. Changing VAPID keys requires resubscribing browsers.
 3. Configure all variables in `.env.example` in your hosting environment. `APP_ORIGIN` must exactly match the dashboard origin (e.g. `https://weather-ultra-dashboard.vercel.app`, no trailing slash). Use a real contact email for `VAPID_SUBJECT`.
-4. Generate different random secrets for `PUSH_PAIRING_CODE` (at least 16 characters) and `PUSH_SEND_SECRET` (at least 32). For example run `openssl rand -hex 24` separately for each. Share the pairing code privately with station users; the send secret belongs only on the server/Pi.
-5. Deploy the dashboard with HTTPS, visit Settings, enter the pairing code, and click Enable Notifications. The browser subscription is saved in Supabase, not in process memory. Only its random management token is retained locally; the database stores a hash. Retry is available if database saving fails after browser permission is granted.
+4. Generate a random `PUSH_SEND_SECRET` (at least 32 characters), e.g. `openssl rand -hex 24`. Keep it only on the server/Pi. Notification registration is open to dashboard visitors and needs no pairing code.
+5. Deploy the dashboard with HTTPS, visit Settings, click Enable Notifications. The browser subscription is saved in Supabase, not in process memory. Only its random management token is retained locally; the database stores a hash. Retry is available if database saving fails after browser permission is granted.
 6. Wire the existing FastAPI alert logic to the server-to-server endpoint below. The companion cloud repository now includes an optional persistent alert hook for `/api/device/readings`. It must actually receive Pi readings to generate alerts.
 
 ### FastAPI / Pi integration
@@ -76,12 +76,12 @@ The same request can send a first test notification after registering a browser.
 ### Server behavior and boundaries
 
 - `/api/push/config` reports readiness and the public VAPID key; it verifies table access.
-- `/api/push/subscriptions` POST requires same-origin and the pairing code; DELETE requires same-origin and the unguessable browser management token.
+- `/api/push/subscriptions` POST requires same-origin and a valid subscription; DELETE requires same-origin and the unguessable browser management token.
 - `/api/push/send` requires a separate server bearer secret. Payloads are bounded, notification routes are allowlisted, and endpoint hosts are restricted to known browser push providers to prevent arbitrary server-side requests.
 - 404/410 endpoints are removed; transient failures are counted and reported with HTTP 502. Retry at the backend with backoff, accounting for possible partial delivery. No automatic retry loop floods phones.
 - Designed for a personal station, up to 100 browser subscriptions per send. Above that limit the sender explicitly refuses and needs a queued delivery service. It sends in batches of 20 with 8-second request timeouts and a 5-minute TTL.
-- Put hosting/WAF rate limits on subscription and config routes before opening registration widely. For a multi-user product replace the shared station pairing code with authenticated membership and per-user authorization.
-- Clearing browser storage can lose its management token; remove stale rows using the Supabase console or wait for provider expiry cleanup. A browser subscription alone is not proof that the server still has its row; re-pair after restoring the database.
+- Put hosting/WAF rate limits on subscription and config routes before opening registration widely. For a private multi-user product add authenticated membership and per-user authorization.
+- Clearing browser storage can lose its management token; remove stale rows using the Supabase console or wait for provider expiry cleanup. A browser subscription alone is not proof that the server still has its row; register again after restoring the database.
 
 ## Verification
 

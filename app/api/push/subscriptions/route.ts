@@ -5,7 +5,6 @@ import {
   json,
   readBody,
   sameOrigin,
-  secretMatches,
 } from "@/lib/push-server";
 import { validSubscription, validToken } from "@/lib/push-validation";
 export const runtime = "nodejs";
@@ -18,9 +17,7 @@ export async function POST(request: Request) {
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
-  if (!body || !secretMatches(body.code, process.env.PUSH_PAIRING_CODE))
-    return json({ error: "Invalid pairing code" }, 401);
-  if (!validToken(body.token) || !validSubscription(body.subscription))
+  if (!body || !validToken(body.token) || !validSubscription(body.subscription))
     return json({ error: "Invalid subscription" }, 400);
   const { error } = await database()
     .from("push_subscriptions")

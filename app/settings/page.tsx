@@ -16,7 +16,6 @@ export default function SettingsPage() {
   const [paired, setPaired] = useState(false);
   const [permission, setPermission] =
     useState<NotificationPermission>("default");
-  const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -80,17 +79,14 @@ export default function SettingsPage() {
       const response = await fetch("/api/push/subscriptions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: sub.toJSON(), token, code }),
+        body: JSON.stringify({ subscription: sub.toJSON(), token }),
       });
       if (!response.ok)
         throw new Error(
-          response.status === 401
-            ? "Mã ghép nối chưa đúng. Nhập mã do chủ trạm cung cấp rồi thử lại."
-            : "Chưa lưu được đăng ký trên máy chủ. Hãy thử lại; quyền trình duyệt chưa đồng nghĩa với đăng ký thành công.",
+          "Chưa lưu được đăng ký trên máy chủ. Hãy thử lại; quyền trình duyệt chưa đồng nghĩa với đăng ký thành công.",
         );
       localStorage.setItem("push-saved", "1");
       setPaired(true);
-      setCode("");
       setMessage(
         "Đã đăng ký nhận thông báo trên thiết bị này. Cảnh báo được gửi khi backend của trạm phát sự kiện.",
       );
@@ -197,7 +193,7 @@ export default function SettingsPage() {
           {!config.ready && (
             <div className="notice">
               Máy chủ chưa sẵn sàng gửi push. Chủ trạm cần cấu hình khóa VAPID,
-              bảng lưu đăng ký và mã ghép nối.
+              bảng lưu đăng ký và khóa gửi cảnh báo trên máy chủ.
             </div>
           )}
           {pwa.ios && !pwa.installed && (
@@ -230,16 +226,6 @@ export default function SettingsPage() {
             </>
           ) : (
             <>
-              <label className="field">
-                Mã ghép nối của trạm
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="Nhập mã do chủ trạm cung cấp"
-                />
-              </label>
               <div className="button-row">
                 <button
                   className="primary-button"
@@ -248,7 +234,6 @@ export default function SettingsPage() {
                     !available ||
                     !pwa.registration ||
                     !config.ready ||
-                    !code ||
                     permission === "denied"
                   }
                   onClick={enable}
